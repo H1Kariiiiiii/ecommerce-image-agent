@@ -1,0 +1,30 @@
+# 依赖
+node_modules/
+
+# 构建产物
+out/
+dist/
+release/
+
+# 本地工具 / 编辑器
+reasonix.toml
+.reasonix/
+.idea/
+.vscode/
+*.swp
+
+# 日志与缓存
+*.log
+*.tsbuildinfo
+.DS_Store
+Thumbs.db
+
+# 误放的语言包 / 临时文件
+*.traineddata
+tmp/
+*.bak
+
+# DSH 工具目录（会话上传、解压、视觉缓存等，不入库）
+.dsh-uploads/
+.dsh-extract/
+.dsh-vision-toolkit/

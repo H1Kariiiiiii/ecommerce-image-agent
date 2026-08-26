@@ -1,0 +1,46 @@
+appId: com.ecommerce.image-agent
+productName: ToyWhiteBG-Agent
+copyright: Copyright © 2025 ecommerce-image-agent
+directories:
+  output: release
+files:
+  - out/**/*
+  - "!**/*.map"
+extraResources:
+  - from: resources/ocr-models
+    to: ocr-models
+asar: true
+# onnxruntime-node 原生绑定（.node）必须解包，否则 require 失败
+asarUnpack:
+  - node_modules/onnxruntime-node/**
+npmRebuild: true
+
+win:
+  icon: build/icon.ico
+  # 同时产出三种形态：NSIS 安装包（装完有桌面快捷方式）、便携版 .exe、免安装文件夹
+  target:
+    - target: nsis
+      arch:
+        - x64
+    - target: portable
+      arch:
+        - x64
+    - target: dir
+      arch:
+        - x64
+
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  # 安装后自动创建桌面与开始菜单快捷方式（用户要的「双击图标就能用」）
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: 玩具白底图 Agent
+  artifactName: "${productName}-${version}-Setup.${ext}"
+
+portable:
+  artifactName: "${productName}-${version}-portable.${ext}"
+
+electronDownload:
+  mirror: "https://npmmirror.com/mirrors/electron/"

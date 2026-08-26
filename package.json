@@ -1,0 +1,42 @@
+{
+  "name": "ecommerce-image-agent",
+  "version": "0.8.0",
+  "description": "玩具电商白底图 Agent：上传玩具产品图，自动抠图生成白底图 / 改货号",
+  "main": "./out/main/index.js",
+  "author": "ecommerce-image-agent",
+  "license": "MIT",
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build": "electron-vite build",
+    "start": "electron-vite preview",
+    "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json && tsc --noEmit -p tsconfig.tests.json",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "dist": "npm run build && electron-builder --win",
+    "dist:dir": "npm run build && electron-builder --win dir"
+  },
+  "dependencies": {
+    "@electron-toolkit/preload": "^3.0.1",
+    "@electron-toolkit/utils": "^3.0.0",
+    "marked": "^18.0.9",
+    "onnxruntime-node": "^1.27.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "sharp": "^0.35.3"
+  },
+  "devDependencies": {
+    "@testing-library/react": "^16.3.2",
+    "@testing-library/user-event": "^14.6.3",
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "@vitejs/plugin-react": "^4.3.4",
+    "electron": "^33.2.0",
+    "electron-builder": "^26.15.3",
+    "electron-vite": "^2.3.0",
+    "jsdom": "^29.1.1",
+    "typescript": "^5.7.2",
+    "vite": "^5.4.11",
+    "vitest": "^4.1.10"
+  },
+  "keywords": []
+}
