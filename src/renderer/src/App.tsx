@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { ProcessImageResponse, ProviderConfig, QuotaInfo, TextRegion } from '../../shared/types'
+import type { ProcessImageResponse, ProviderConfig, QuotaInfo } from '../../shared/types'
 import { applyTheme, assetUrl, type Theme } from './lib'
 import { UploadZone } from './components/UploadZone'
 import { CompareView } from './components/CompareView'
-import { RegionSelector } from './components/RegionSelector'
 import { SettingsModal } from './components/SettingsModal'
 import { HelpModal } from './components/HelpModal'
+import { LabelBatchPanel } from './components/LabelBatchPanel'
+import { QuotePanel } from './components/QuotePanel'
 
 /** 批量任务中的一张图片 */
 export interface JobItem {
@@ -35,8 +36,8 @@ export default function App(): JSX.Element {
   const [error, setError] = useState<string | null>(null)
   const [theme, setTheme] = useState<Theme>('system')
   const [quota, setQuota] = useState<QuotaInfo | null>(null)
-  /** 当前模式：白底图 / 擦除货号 */
-  const [mode, setMode] = useState<'white-bg' | 'edit-text'>('white-bg')
+  /** 当前模式：白底图 / 批量改货号 / 报价表 */
+  const [mode, setMode] = useState<'white-bg' | 'label-batch' | 'quote'>('white-bg')
   /** 白底图方式：ai = API 生成（消耗额度）/ local = 纯算法抠白底（免费）/ canvas = 无损画布扩展（免费） */
   const [whiteBgMethod, setWhiteBgMethod] = useState<'ai' | 'local' | 'canvas'>('ai')
   /** 画布扩展：目标比例（宽/高） */
@@ -45,47 +46,15 @@ export default function App(): JSX.Element {
   const [canvasStrategy, setCanvasStrategy] = useState<'pad' | 'fit'>('pad')
   /** 画布扩展：背景色（CSS 颜色，默认纯白） */
   const [canvasBackground, setCanvasBackground] = useState('#ffffff')
-  /** 擦除货号：框选区域 */
-  const [editRegion, setEditRegion] = useState<TextRegion | null>(null)
-  /** 擦除货号：原文字锚点（可选，帮助 OCR 定位） */
-  const [oldText, setOldText] = useState('')
-  /** 擦除货号：处理中 */
-  const [editProcessing, setEditProcessing] = useState(false)
-  /** 擦除方式：ai = AI inpainting（独立 key）/ local = 纯本地免费 */
-  const [eraseMethod, setEraseMethod] = useState<'ai' | 'local'>('ai')
-  /** 擦除货号：OCR 识别到的原文字（供用户核对） */
-  const [ocrResult, setOcrResult] = useState<string | null>(null)
-  /** 批量擦除：旧前缀锚点（可选，如 NO，帮助 OCR 定位） */
-  const [batchAnchor, setBatchAnchor] = useState('')
-  /** 批量擦除：执行中 */
-  const [batchEditRunning, setBatchEditRunning] = useState(false)
-  /** 单张擦除：处理中 */
-  const [eraseProcessing, setEraseProcessing] = useState(false)
   /** 批量生成中止标记：清空/删除列表后停止后续付费调用 */
   const abortRef = useRef(false)
 
-  /** 当前激活 provider（通用 或 默认） */
-  const activeProvider = providers.find((p) => p.active) ?? providers[0] ?? null
   /**
-   * 白底图 provider：「使用中」优先（除非它被显式设为仅擦除），
-   * 否则回退到 role 标记为仅白底/通用的 provider，再回退到任意（非仅擦除）项。
-   * 修复：active 的阿里云（无 role）被 role='both' 的旧项压过的问题。
+   * 当前使用的 provider。
+   * 擦除货号模式已移除，AI 现在只服务于「抠白底图」这一个用途，
+   * 所以不再需要按 role 分流 —— 「使用中」那个就是它。
    */
-  const whiteBgProvider =
-    activeProvider && activeProvider.role !== 'erase'
-      ? activeProvider
-      : providers.find((p) => p.role === 'white-bg' || p.role === 'both') ??
-        activeProvider ??
-        providers.find((p) => p.role !== 'erase') ??
-        null
-  /** 擦除货号 provider：「使用中」优先（除非它被显式设为仅白底），否则回退 role 标记 */
-  const eraseProvider =
-    activeProvider && activeProvider.role !== 'white-bg'
-      ? activeProvider
-      : providers.find((p) => p.role === 'erase' || p.role === 'both') ??
-        activeProvider ??
-        providers.find((p) => p.role !== 'white-bg') ??
-        null
+  const activeProvider = providers.find((p) => p.active) ?? providers[0] ?? null
   const selected = items.find((i) => i.id === selectedId) ?? null
   const doneCount = items.filter((i) => i.status === 'done').length
   const pendingCount = items.filter((i) => i.status === 'pending' || i.status === 'error').length
@@ -129,10 +98,6 @@ export default function App(): JSX.Element {
       if (jobs.length > 0) setSelectedId(jobs[0].id)
       return [...prev, ...jobs]
     })
-    // 新图加入：清空擦除货号编辑态
-    setEditRegion(null)
-    setOldText('')
-    setOcrResult(null)
     setError(null)
   }, [])
 
@@ -158,10 +123,6 @@ export default function App(): JSX.Element {
         if (cur !== id) return cur
         // 删除的是当前选中项：优先选中同位置的下一个，否则上一个
         const candidate = next[Math.min(idx, next.length - 1)]
-        // 同步清空擦除货号编辑态，避免残留到其他图
-        setEditRegion(null)
-        setOldText('')
-        setOcrResult(null)
         return candidate ? candidate.id : null
       })
       return next
@@ -173,9 +134,6 @@ export default function App(): JSX.Element {
     setItems([])
     setSelectedId(null)
     setError(null)
-    setEditRegion(null)
-    setOldText('')
-    setOcrResult(null)
   }, [])
 
   /** 处理单张图片并更新任务状态 */
@@ -262,181 +220,15 @@ export default function App(): JSX.Element {
     }
   }, [items])
 
-  /** 单张擦除货号：AI inpainting（erase 专用 provider）或纯本地（免费） */
-  const handleEraseText = useCallback(async () => {
-    if (!selected || eraseProcessing) return
-    setEditProcessing(true)
-    setError(null)
-    setOcrResult(null)
-    setItems((prev) => prev.map((i) => (i.id === selected.id ? { ...i, status: 'processing', error: undefined } : i)))
-    try {
-      let outputPath: string | undefined
-      let quota: QuotaInfo | undefined
-      if (eraseMethod === 'ai') {
-        const res = await window.api.eraseTextAI({
-          inputPath: selected.inputPath,
-          anchor: oldText.trim() || undefined,
-          region: editRegion ?? undefined
-        })
-        if (!res.ok) throw new Error(res.error ?? '擦除失败')
-        outputPath = res.outputPath
-        quota = res.quota
-        if (res.detectedText) setOcrResult(`识别到货号：${res.detectedText}`)
-      } else {
-        const res = await window.api.eraseTextLocal({
-          inputPath: selected.inputPath,
-          anchor: oldText.trim() || undefined,
-          region: editRegion ?? undefined
-        })
-        if (!res.ok) throw new Error(res.error ?? '擦除失败')
-        outputPath = res.outputPath
-        if (res.detectedText) setOcrResult(`识别到货号：${res.detectedText}`)
-      }
-      if (quota) setQuota(quota)
-      setItems((prev) =>
-        prev.map((i) =>
-          i.id === selected.id
-            ? { ...i, status: 'done', outputPath, sourceUrl: undefined }
-            : i
-        )
-      )
-    } catch (err) {
-      setItems((prev) =>
-        prev.map((i) =>
-          i.id === selected.id
-            ? { ...i, status: 'error', error: err instanceof Error ? err.message : String(err) }
-            : i
-        )
-      )
-    } finally {
-      setEditProcessing(false)
-    }
-  }, [selected, editRegion, oldText, eraseMethod, eraseProcessing])
-
-  /** 批量去掉货号：预定位（失败图复用同批成功图区域）→ 本地擦除（纯免费） */
-  const handleBatchEraseText = useCallback(async () => {
-    if (batchEditRunning) return
-    const targets = items.filter((i) => i.status === 'pending' || i.status === 'error')
-    if (targets.length === 0) return
-
-    setBatchEditRunning(true)
-    setError(null)
-    setOcrResult(null)
-    abortRef.current = false
-
-    // 阶段 1：预定位所有目标图（本地 OCR 快），收集区域；失败图暂记为 null
-    // 同批次产品图货号位置通常一致：有一张定位成功，其余可直接复用
-    const regionMap = new Map<string, TextRegion | null>()
-    const textMap = new Map<string, string>()
-    let firstGoodRegion: TextRegion | null = null
-
-    for (const job of targets) {
-      if (abortRef.current) break
-      // 当前选中图已手动框选 → 直接用框选区域
-      if (job.id === selectedId && editRegion) {
-        regionMap.set(job.id, editRegion)
-        if (!firstGoodRegion) firstGoodRegion = editRegion
-        continue
-      }
-      try {
-        setItems((prev) => prev.map((i) => (i.id === job.id ? { ...i, status: 'processing', error: undefined } : i)))
-        const detect = await window.api.ocrDetect({
-          inputPath: job.inputPath,
-          anchor: batchAnchor.trim() || undefined
-        })
-        if (detect.ok && detect.region) {
-          regionMap.set(job.id, detect.region)
-          if (detect.text) textMap.set(job.id, detect.text)
-          if (!firstGoodRegion) {
-            firstGoodRegion = detect.region
-          }
-        } else {
-          regionMap.set(job.id, null)
-        }
-      } catch {
-        regionMap.set(job.id, null)
-      }
-    }
-
-    // 阶段 1.5：定位失败的图，复用同批第一张成功图的区域（位置一致场景）
-    if (firstGoodRegion) {
-      for (const job of targets) {
-        if (abortRef.current) break
-        if (regionMap.get(job.id) === undefined) continue
-        if (regionMap.get(job.id) === null) {
-          regionMap.set(job.id, firstGoodRegion)
-          // 尝试识别该区域文字（辅助后续显示；失败不影响擦除）
-          try {
-            const rec = await window.api.ocrRecognize({ inputPath: job.inputPath, region: firstGoodRegion })
-            if (rec.ok && rec.text) textMap.set(job.id, rec.text)
-          } catch {
-            /* 忽略 */
-          }
-        }
-      }
-    }
-
-    // 阶段 2：逐张处理（有区域就擦除，无区域报错；按 eraseMethod 走 AI 或本地）
-    for (const job of targets) {
-      if (abortRef.current) break
-      const region = regionMap.get(job.id)
-      if (region === undefined || region === null) {
-        setItems((prev) =>
-          prev.map((i) =>
-            i.id === job.id
-              ? { ...i, status: 'error', error: '未识别到货号，且批次内无可用参考区域（可手动框选）' }
-              : i
-          )
-        )
-        continue
-      }
-      setItems((prev) => prev.map((i) => (i.id === job.id ? { ...i, status: 'processing', error: undefined } : i)))
-      try {
-        let outputPath: string | undefined
-        let quota: QuotaInfo | undefined
-        if (eraseMethod === 'ai') {
-          const res = await window.api.eraseTextAI({
-            inputPath: job.inputPath,
-            anchor: batchAnchor.trim() || undefined,
-            region
-          })
-          if (!res.ok) throw new Error(res.error ?? '擦除失败')
-          outputPath = res.outputPath
-          quota = res.quota
-        } else {
-          const res = await window.api.eraseTextLocal({
-            inputPath: job.inputPath,
-            anchor: batchAnchor.trim() || undefined,
-            region
-          })
-          if (!res.ok) throw new Error(res.error ?? '擦除失败')
-          outputPath = res.outputPath
-        }
-        if (quota) setQuota(quota)
-        setItems((prev) =>
-          prev.map((i) => (i.id === job.id ? { ...i, status: 'done', outputPath, sourceUrl: undefined } : i))
-        )
-      } catch (err) {
-        setItems((prev) =>
-          prev.map((i) =>
-            i.id === job.id
-              ? { ...i, status: 'error', error: err instanceof Error ? err.message : String(err) }
-              : i
-          )
-        )
-      }
-    }
-
-    setBatchEditRunning(false)
-    abortRef.current = false
-  }, [items, batchEditRunning, batchAnchor, selectedId, editRegion, eraseMethod])
-
   return (
     <div className="app">
       <header className="topbar">
         <div className="brand">
           <span className="brand-logo">🧸</span>
           <h1>玩具白底图 Agent</h1>
+          <span className="app-version" title="当前运行的版本（取自 package.json）">
+            v{__APP_VERSION__}
+          </span>
           <div className="mode-switcher">
             <button
               className={`mode-btn${mode === 'white-bg' ? ' active' : ''}`}
@@ -445,18 +237,24 @@ export default function App(): JSX.Element {
               ✨ 白底图
             </button>
             <button
-              className={`mode-btn${mode === 'edit-text' ? ' active' : ''}`}
-              onClick={() => setMode('edit-text')}
+              className={`mode-btn${mode === 'label-batch' ? ' active' : ''}`}
+              onClick={() => setMode('label-batch')}
+              title="整个文件夹批量改货号（纯算法，免费）"
             >
-              🏷️ 擦除货号
+              🔢 批量改货号
+            </button>
+            <button
+              className={`mode-btn${mode === 'quote' ? ' active' : ''}`}
+              onClick={() => setMode('quote')}
+              title="把报价表里的旧图换成新图，货号列同步改前缀"
+            >
+              📊 报价表
             </button>
           </div>
         </div>
         <div className="topbar-right">
-          <span className={`provider-state ${whiteBgProvider || eraseProvider ? 'ok' : 'warn'}`}>
-            {whiteBgProvider || eraseProvider
-              ? `白底：${whiteBgProvider?.name ?? '未配'} · 擦除：${eraseProvider?.name ?? '未配'}`
-              : '未配置 API'}
+          <span className={`provider-state ${activeProvider ? 'ok' : 'warn'}`}>
+            {activeProvider ? `白底图 API：${activeProvider.name}` : '未配置 API'}
           </span>
           {quota && quota.limit > 0 && (
             <span
@@ -489,7 +287,8 @@ export default function App(): JSX.Element {
         </div>
       </header>
 
-      {/* 批量图片列表 */}
+      {/* 批量图片列表：仅「白底图」使用（后两个模式是文件夹级流水线） */}
+      {mode === 'white-bg' && (
       <div className="batch-bar">
         <button className="btn-secondary batch-add" onClick={handlePick}>
           + 添加图片
@@ -499,13 +298,7 @@ export default function App(): JSX.Element {
             <div
               key={item.id}
               className={`batch-thumb${item.id === selectedId ? ' selected' : ''}${item.status === 'processing' ? ' processing' : ''}`}
-              onClick={() => {
-                setSelectedId(item.id)
-                // 切换图片：清空擦除货号编辑态（区域/锚点属于上一张图）
-                setEditRegion(null)
-                setOldText('')
-                setOcrResult(null)
-              }}
+              onClick={() => setSelectedId(item.id)}
               title={item.name}
             >
               <img src={assetUrl(item.inputPath)} alt={item.name} />
@@ -535,10 +328,15 @@ export default function App(): JSX.Element {
           </button>
         )}
       </div>
+      )}
 
-      <main className={`main${mode === 'edit-text' ? ' main-edit' : ''}`}>
-        {mode === 'white-bg' ? (
-          <>
+      {mode === 'label-batch' ? (
+        <LabelBatchPanel />
+      ) : mode === 'quote' ? (
+        <QuotePanel />
+      ) : (
+      <main className="main">
+        <>
             <section className="panel">
               <div className="panel-head">
                 <h2>原图</h2>
@@ -673,7 +471,7 @@ export default function App(): JSX.Element {
                         : 'AI 正在生成白底图，可能需要 1~3 分钟…'}
                   </p>
                   {whiteBgMethod === 'ai' && (
-                    <p className="dim">当前：{whiteBgProvider?.name ?? '未配置'}</p>
+                    <p className="dim">当前：{activeProvider?.name ?? '未配置'}</p>
                   )}
                 </div>
               ) : selected?.status === 'done' && selected.outputPath ? (
@@ -693,150 +491,10 @@ export default function App(): JSX.Element {
               )}
             </section>
           </>
-        ) : (
-          <>
-            <section className="panel">
-              <div className="panel-head">
-                <h2>框选货号区域</h2>
-                {selected && (
-                  <span className="file-name" title={selected.inputPath}>
-                    {selected.name}
-                  </span>
-                )}
-              </div>
-              {selected ? (
-                <RegionSelector
-                  inputPath={selected.inputPath}
-                  region={editRegion}
-                  onRegionChange={setEditRegion}
-                />
-              ) : (
-                <UploadZone inputPath={null} onPick={handlePick} onFiles={handleFiles} />
-              )}
-            </section>
-
-            <section className="panel">
-              <div className="panel-head">
-                <h2>擦除结果</h2>
-                {selected?.status === 'done' && selected.outputPath && (
-                  <div className="panel-head-actions">
-                    <button className="btn-primary small" onClick={handleExportSelected}>
-                      💾 导出
-                    </button>
-                  </div>
-                )}
-              </div>
-              {editProcessing ? (
-                <div className="processing">
-                  <div className="spinner" />
-                  <p>正在擦除货号文字…</p>
-                  <p className="dim">当前：{eraseMethod === 'ai' ? (eraseProvider?.name ?? '未配置') : '纯本地（免费）'}</p>
-                </div>
-              ) : selected?.status === 'done' && selected.outputPath ? (
-                <CompareView inputPath={selected.inputPath} outputPath={selected.outputPath} />
-              ) : selected?.status === 'error' ? (
-                <div className="placeholder">
-                  <span>⚠️</span>
-                  <p>处理失败</p>
-                  <p className="dim">{selected.error}</p>
-                </div>
-              ) : (
-                <div className="placeholder">
-                  <span>🏷️</span>
-                  <p>擦除结果将显示在这里</p>
-                  {!selected && <p className="dim">请先上传玩具产品图</p>}
-                  {selected && !editRegion && <p className="dim">可框选货号区域，或直接自动定位擦除</p>}
-                </div>
-              )}
-            </section>
-          </>
-        )}
       </main>
-
-      {mode === 'edit-text' && (
-        <div className="edit-bar">
-          <div className="edit-method-switcher">
-            <button
-              className={`chip${eraseMethod === 'ai' ? ' active' : ''}`}
-              onClick={() => setEraseMethod('ai')}
-              title="AI inpainting 擦除货号（用「擦除专用」API，效果最好）"
-            >
-              🤖 AI 擦除
-            </button>
-            <button
-              className={`chip${eraseMethod === 'local' ? ' active' : ''}`}
-              onClick={() => setEraseMethod('local')}
-              title="纯本地擦除（免费，适合纯色/浅色背景）"
-            >
-              💯 纯本地（免费）
-            </button>
-          </div>
-          <label className="edit-field edit-field-main">
-            <span>原货号（可选，作为锚点帮助定位）</span>
-            <input
-              type="text"
-              value={oldText}
-              onChange={(e) => setOldText(e.target.value)}
-              placeholder="如 NO.JT888-10"
-              spellCheck={false}
-            />
-          </label>
-          <button
-            className="btn-primary"
-            onClick={handleEraseText}
-            disabled={
-              !selected ||
-              editProcessing ||
-              (eraseMethod === 'ai' && !eraseProvider)
-            }
-            title={
-              eraseMethod === 'ai' && !eraseProvider
-                ? '请先在 ⚙️ API 设置 中配置「擦除专用」或「通用」API'
-                : undefined
-            }
-          >
-            {editProcessing ? '⏳ 擦除中…' : '✂️ 擦除货号'}
-          </button>
-          {ocrResult && <span className="ocr-note" title="OCR 识别结果仅供参考">{ocrResult}</span>}
-        </div>
       )}
 
-      {mode === 'edit-text' && (
-        <div className="batch-edit-bar">
-          <div className="batch-edit-head">
-            <span className="batch-edit-title">⚡ 批量擦除（自动定位）</span>
-            <span className="dim batch-edit-tip">无需框选：每张图自动 OCR 识别货号位置，同批位置可复用</span>
-          </div>
-          <div className="batch-edit-controls">
-            <label className="edit-field">
-              <span>旧前缀锚点（可选）</span>
-              <input
-                type="text"
-                value={batchAnchor}
-                onChange={(e) => setBatchAnchor(e.target.value)}
-                placeholder="如 NO"
-                spellCheck={false}
-              />
-            </label>
-            <span className="dim batch-edit-preview">
-              {eraseMethod === 'ai' ? 'AI inpainting 擦除（用擦除专用 API）' : '纯本地擦除（免费）'}
-            </span>
-            <button
-              className="btn-primary"
-              onClick={handleBatchEraseText}
-              disabled={items.length === 0 || batchEditRunning || (eraseMethod === 'ai' && !eraseProvider)}
-              title={eraseMethod === 'ai' && !eraseProvider ? '请先配置「擦除专用」或「通用」API' : undefined}
-            >
-              {batchEditRunning
-                ? `⏳ 批量擦除中… ${items.filter((i) => i.status === 'done').length}/${pendingCount + items.filter((i) => i.status === 'done').length}`
-                : eraseMethod === 'ai'
-                  ? `🗑️ 批量擦除（${pendingCount} 张）`
-                  : `🗑️ 批量擦除（${pendingCount} 张，免费）`}
-            </button>
-          </div>
-        </div>
-      )}
-
+      {mode === 'white-bg' && (
       <footer className="bottombar">
         {error && <div className="error-banner">⚠️ {error}</div>}
         <div className="bottombar-inner">
@@ -862,8 +520,8 @@ export default function App(): JSX.Element {
             <button
               className="btn-primary"
               onClick={handleGenerateAll}
-              disabled={items.length === 0 || pendingCount === 0 || batchRunning || (whiteBgMethod === 'ai' && !whiteBgProvider)}
-              title={whiteBgMethod === 'ai' && !whiteBgProvider ? '请先在 ⚙️ API 设置 中配置白底图 API' : undefined}
+              disabled={items.length === 0 || pendingCount === 0 || batchRunning || (whiteBgMethod === 'ai' && !activeProvider)}
+              title={whiteBgMethod === 'ai' && !activeProvider ? '请先在 ⚙️ API 设置 中配置白底图 API' : undefined}
             >
               {batchRunning
                 ? '⏳ 批量生成中…'
@@ -884,6 +542,7 @@ export default function App(): JSX.Element {
           )}
         </div>
       </footer>
+      )}
 
       {settingsOpen && (
         <SettingsModal

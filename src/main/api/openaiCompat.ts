@@ -17,17 +17,6 @@ import type {
   ProviderConfig,
   TextRegion
 } from '../../shared/types'
-import { createMask } from './mask'
-
-/**
- * 擦除货号默认提示词：只擦指定区域内的「货号文字」（通常 NO./S/N. 开头），
- * 其余描述文字（功能标签、使用说明等）与产品主体/包装/Logo 必须原样保留。
- */
-export const DEFAULT_ERASE_PROMPT =
-  '仅将图片中指定区域内的【货号文字】（一般以 NO. / S/N. / NO 等开头，如 NO.JT999-2Q）完全擦除，' +
-  '用该区域周围的原背景自然填充，保持背景材质、颜色、纹理一致。' +
-  '该区域附近的其他描述文字（如功能名称、Note、尺寸标注等）以及产品主体、包装、Logo、图案、颜色、细节，' +
-  '都必须原样保留，不得修改、擦除、重绘或新增任何内容。'
 
 const DEFAULT_PROMPT = '将商品主体从背景中完整抠出，替换为纯白色背景（#FFFFFF），保持商品形状、颜色与细节不变，边缘干净自然，无阴影无倒影。'
 
@@ -289,38 +278,6 @@ export class OpenAiCompatProvider implements ApiProvider {
     }
 
     return this.extractResult(json, opts)
-  }
-
-  /** AI 擦除指定区域内的文字（inpainting），不叠加新文字 */
-  async eraseTextWithAI(opts: { inputPath: string; region: TextRegion; outputDir: string }): Promise<MakeWhiteBackgroundResult> {
-    const model = this.config.model ?? ''
-    if (!model) throw new Error('未配置 model')
-
-    // 擦除 prompt：优先用配置的「擦除货号专用提示词」，否则用内置默认（只擦货号文字，其他文字/主体不动）
-    const erasePrompt = this.config.erasePrompt?.trim() ? this.config.erasePrompt : DEFAULT_ERASE_PROMPT
-
-    // 按请求风格分流：
-    // - edits（OpenAI 官方 / 智谱等）：images/edits + mask，最精确
-    // - json（火山方舟 seedream 等）：无 /images/edits 端点，改走 images/generations + 参考图 + 擦除指令
-    // - chat（多模态）：chat/completions + 参考图 + 擦除指令
-    if (this.config.requestStyle === 'edits') {
-      const maskBuffer = await createMask(opts.inputPath, opts.region)
-      const json = await this.callEdits(
-        { inputPath: opts.inputPath, outputDir: opts.outputDir },
-        model,
-        erasePrompt,
-        maskBuffer,
-        false
-      )
-      return this.extractResult(json, { inputPath: opts.inputPath, outputDir: opts.outputDir })
-    }
-    if (this.config.requestStyle === 'chat') {
-      const json = await this.callChat({ inputPath: opts.inputPath, outputDir: opts.outputDir }, model, erasePrompt)
-      return this.extractResult(json, { inputPath: opts.inputPath, outputDir: opts.outputDir })
-    }
-    // json：火山方舟等（generations + 参考图 + 提示词）
-    const json = await this.callGenerations({ inputPath: opts.inputPath, outputDir: opts.outputDir }, model, erasePrompt)
-    return this.extractResult(json, { inputPath: opts.inputPath, outputDir: opts.outputDir })
   }
 
   /**

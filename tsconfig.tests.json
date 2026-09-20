@@ -13,5 +13,6 @@
     "noEmit": true,
     "useDefineForClassFields": true
   },
-  "include": ["tests/**/*", "src/shared/**/*", "src/preload/index.d.ts"]
+  // 渲染层测试会 import App.tsx，所以渲染层的全局声明（__APP_VERSION__ 等）也得进这个项目
+  "include": ["tests/**/*", "src/shared/**/*", "src/preload/index.d.ts", "src/renderer/src/env.d.ts"]
 }

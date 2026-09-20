@@ -1,3 +1,10 @@
+// ⚠️ 必须最先执行：fontconfig 每进程只初始化一次，要在任何文字渲染之前注册打包字体
+import { setupBundledFonts } from './fontSetup'
+
+const fontStatus = setupBundledFonts()
+// 日志留在启动输出里，便于排查「重绘字体不对」类问题
+console.log(`[字体] ${fontStatus.message}${fontStatus.ok ? `（配置：${fontStatus.confPath}）` : ''}`)
+
 import { app, BrowserWindow, net, protocol, shell } from 'electron'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'

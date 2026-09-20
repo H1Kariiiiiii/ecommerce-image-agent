@@ -152,7 +152,6 @@ function blankDraft(type: ProviderType): ProviderConfig {
     name: isDashscope ? '阿里云百炼' : '新 API',
     type,
     prompt: '',
-    erasePrompt: '',
     baseUrl: isDashscope ? 'https://dashscope.aliyuncs.com' : 'https://ark.cn-beijing.volces.com/api/v3',
     requestStyle: 'json',
     model: isDashscope ? 'qwen-image-3.0-pro' : '',
@@ -700,11 +699,10 @@ function ProviderForm({ draft, onChange }: FormProps): JSX.Element {
             value={draft.role ?? 'both'}
             onChange={(e) => onChange({ role: e.target.value as ProviderConfig['role'] })}
           >
-            <option value="both">通用（白底图 + 擦除货号共用）</option>
+            <option value="both">通用（默认）</option>
             <option value="white-bg">仅白底图</option>
-            <option value="erase">仅擦除货号</option>
           </select>
-          <span className="field-hint">「仅擦除货号」的 key 只用于 AI 擦除（images/edits）；可与白底图 key 分开，控制各自消耗</span>
+          <span className="field-hint">AI 目前只用于「抠白底图」；货号相关处理已全部改为本地纯算法，不消耗额度</span>
         </label>
         {draft.type !== 'dashscope' && (
           <label className="field">
@@ -744,16 +742,6 @@ function ProviderForm({ draft, onChange }: FormProps): JSX.Element {
           rows={2}
           placeholder="例如：将商品完整抠出，替换为纯白色背景，保留细节，无阴影。"
           onChange={(e) => onChange({ prompt: e.target.value })}
-        />
-      </label>
-
-      <label className="field">
-        <span className="field-label">擦除货号提示词（可留空使用默认：只擦 NO. 开头货号，其他文字不动）</span>
-        <textarea
-          value={draft.erasePrompt ?? ''}
-          rows={2}
-          placeholder="默认提示词：仅擦除指定区域的货号文字（如 NO.JT999-2Q），其余描述文字/产品主体/Logo 一律原样保留。"
-          onChange={(e) => onChange({ erasePrompt: e.target.value })}
         />
       </label>
 

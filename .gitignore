@@ -28,3 +28,7 @@ tmp/
 .dsh-uploads/
 .dsh-extract/
 .dsh-vision-toolkit/
+.tmp-real/
+输出示例/
+.ui-shots/
+.scratch/

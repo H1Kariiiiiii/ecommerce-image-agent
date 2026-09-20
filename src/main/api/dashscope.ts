@@ -1,5 +1,4 @@
 import { downloadToFile, uniqueResultPath } from './util'
-import { DEFAULT_ERASE_PROMPT } from './openaiCompat'
 import type {
   ApiProvider,
   BalanceResult,
@@ -207,47 +206,6 @@ export class DashScopeProvider implements ApiProvider {
       return { outputPath, mimeType: 'application/octet-stream', sourceUrl: url }
     }
     throw new Error(`响应中没有图片结果：${JSON.stringify(json).slice(0, 300)}`)
-  }
-
-  /**
-   * 区域擦除（qwen-image-edit 等编辑模型）：参考图 + 擦除指令。
-   * 百炼编辑接口无独立 mask 通道，靠指令描述区域 + 强调不改动其余部分。
-   */
-  async eraseTextWithAI(opts: {
-    inputPath: string
-    region: TextRegion
-    outputDir: string
-  }): Promise<MakeWhiteBackgroundResult> {
-    const model = this.config.model?.trim()
-    if (!model) throw new Error('未配置 model（编辑模型如 qwen-image-edit）')
-    // 归一化区域为百分比，便于模型定位（0~100）
-    const rx = Math.round(opts.region.x * 100)
-    const ry = Math.round(opts.region.y * 100)
-    const rw = Math.round(opts.region.width * 100)
-    const rh = Math.round(opts.region.height * 100)
-    // 优先用配置的「擦除货号专用提示词」，否则内置默认（只擦货号文字，其余保留）
-    const base = this.config.erasePrompt?.trim() ? this.config.erasePrompt : DEFAULT_ERASE_PROMPT
-    const prompt = `（目标区域约为图片的 (${rx}%, ${ry}%) 到 (${rx + rw}%, ${ry + rh}%) 处）${base}`
-    const { fileToBase64, sniffImageMime } = await import('./util')
-    const b64 = await fileToBase64(opts.inputPath)
-    const mime = sniffImageMime(Buffer.from(b64, 'base64')) ?? 'image/png'
-    const body = {
-      model,
-      input: {
-        messages: [
-          {
-            role: 'user',
-            content: [
-              { image: `data:${mime};base64,${b64}` },
-              { text: prompt }
-            ]
-          }
-        ]
-      },
-      parameters: { size: '1024*1024', n: 1 }
-    }
-    const json = (await this.request(body)) as Record<string, unknown>
-    return this.extractResult(json, opts)
   }
 
   /** 从百炼响应中提取图片（choices[].message.content[] 的 image / url / image_url） */

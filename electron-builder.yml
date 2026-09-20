@@ -7,12 +7,10 @@ files:
   - out/**/*
   - "!**/*.map"
 extraResources:
-  - from: resources/ocr-models
-    to: ocr-models
+  # 随应用打包的字体：Arial 缺失时用度量完全一致的 Liberation Sans Bold 兜底（SIL OFL 1.1）
+  - from: resources/fonts
+    to: fonts
 asar: true
-# onnxruntime-node 原生绑定（.node）必须解包，否则 require 失败
-asarUnpack:
-  - node_modules/onnxruntime-node/**
 npmRebuild: true
 
 win:

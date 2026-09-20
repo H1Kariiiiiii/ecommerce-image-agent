@@ -45,10 +45,6 @@ beforeEach(() => {
     testProvider: vi.fn(async () => ({ ok: true, message: 'ok' })),
     queryBalance: vi.fn(async () => ({ ok: false, message: '不支持' })),
     processImage: vi.fn(),
-    ocrDetect: vi.fn(),
-    ocrRecognize: vi.fn(),
-    eraseTextAI: vi.fn(),
-    eraseTextLocal: vi.fn(),
     pickImage: vi.fn(),
     pickImages: vi.fn(async () => []),
     exportImage: vi.fn(),
@@ -60,6 +56,18 @@ beforeEach(() => {
     getCacheInfo: vi.fn(async () => ({ fileCount: 0, sizeBytes: 0 })),
     cleanCache: vi.fn(async () => ({ removedCount: 0, freedBytes: 0 })),
     clearCache: vi.fn(async () => ({ removedCount: 0, freedBytes: 0 })),
+    // 批量改货号 / 报价表（本次新增）
+    pickFolder: vi.fn(async () => null),
+    pickXlsx: vi.fn(async () => null),
+    pickMapping: vi.fn(async () => null),
+    labelPreview: vi.fn(async () => ({ ok: true, outputDir: '', total: 0, okCount: 0, warnCount: 0, notFoundCount: 0, errorCount: 0, renamedCount: 0, items: [], dryRun: true })),
+    labelRun: vi.fn(async () => ({ ok: true, outputDir: '', total: 0, okCount: 0, warnCount: 0, notFoundCount: 0, errorCount: 0, renamedCount: 0, items: [], dryRun: false })),
+    labelCancel: vi.fn(async () => true),
+    onLabelProgress: vi.fn(() => () => {}),
+    quotePreview: vi.fn(async () => ({ ok: true, dryRun: true })),
+    quoteRun: vi.fn(async () => ({ ok: true, dryRun: false })),
+    openPath: vi.fn(async () => ({ ok: true })),
+    exportText: vi.fn(async () => null),
   }
 })
 

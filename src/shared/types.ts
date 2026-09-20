@@ -8,8 +8,8 @@ export type ProviderType = 'volcano-cv' | 'openai-compatible' | 'dashscope'
 /** 签名算法版本：官方 SDK 默认旧版 HMAC-SHA256；新版 VOLCENGINE-HMAC-SHA256 用于 2023-12-01 之后的新接口 */
 export type SignVersion = 'HMAC-SHA256' | 'VOLCENGINE-HMAC-SHA256'
 
-/** Provider 用途：白底图 / 擦除货号（AI）/ 两者通用 */
-export type ProviderRole = 'white-bg' | 'erase' | 'both'
+/** Provider 用途：白底图专用 / 通用（历史配置里的 erase 会在加载时归一化） */
+export type ProviderRole = 'white-bg' | 'both'
 
 export interface ProviderConfig {
   id: string
@@ -17,14 +17,12 @@ export interface ProviderConfig {
   type: ProviderType
   /** 是否为当前激活 provider */
   active?: boolean
-  /** 用途：白底图专用 / 擦除货号专用 / 通用（默认 both，兼容旧配置） */
+  /** 用途：白底图专用 / 通用（默认 both，兼容旧配置） */
   role?: ProviderRole
 
   // ---------- 通用 ----------
   /** 生成白底图的提示词（针对使用 prompt 的接口） */
   prompt?: string
-  /** 擦除货号专用提示词（AI 擦除时使用；留空用内置默认：只擦货号文字，其他描述文字/主体不动） */
-  erasePrompt?: string
 
   // ---------- volcano-cv：签名与请求 ----------
   /** 接口地址，如 https://visual.volcengineapi.com */
@@ -131,12 +129,6 @@ export interface BalanceResult {
 export interface ApiProvider {
   readonly config: ProviderConfig
   makeWhiteBackground(opts: MakeWhiteBackgroundOptions): Promise<MakeWhiteBackgroundResult>
-  /** AI 擦除指定区域内的文字（inpainting），不叠加新文字 */
-  eraseTextWithAI?(opts: {
-    inputPath: string
-    region: TextRegion
-    outputDir: string
-  }): Promise<MakeWhiteBackgroundResult>
   /** 轻量连通性测试 */
   testConnection(): Promise<{ ok: boolean; message: string }>
   /** 查询余额/额度（服务商不支持时返回 ok:false 与说明） */
@@ -153,10 +145,6 @@ export const IPC = {
   providersQueryBalance: 'providers:queryBalance',
   pathsAuthorize: 'paths:authorize',
   processImage: 'process:image',
-  eraseTextAI: 'erase:textAI',
-  eraseTextLocal: 'erase:textLocal',
-  ocrDetect: 'ocr:detect',
-  ocrRecognize: 'ocr:recognize',
   dialogPickImage: 'dialog:pickImage',
   dialogPickImages: 'dialog:pickImages',
   exportImage: 'dialog:exportImage',
@@ -167,7 +155,23 @@ export const IPC = {
   quotaSetLimit: 'quota:setLimit',
   cacheInfo: 'cache:info',
   cacheClean: 'cache:clean',
-  cacheClearAll: 'cache:clearAll'
+  cacheClearAll: 'cache:clearAll',
+  // ---------- 货号批量处理（纯算法，零 API 成本） ----------
+  dialogPickFolder: 'dialog:pickFolder',
+  dialogPickXlsx: 'dialog:pickXlsx',
+  labelPreview: 'label:preview',
+  labelRun: 'label:run',
+  labelCancel: 'label:cancel',
+  /** main → renderer 的进度推送（不是 invoke） */
+  labelProgress: 'label:progress',
+  // ---------- 报价表换图改货号 ----------
+  dialogPickMapping: 'dialog:pickMapping',
+  quotePreview: 'quote:preview',
+  quoteRun: 'quote:run',
+  /** 在系统文件管理器里打开已授权路径（文件夹或文件所在目录） */
+  shellOpenPath: 'shell:openPath',
+  /** 导出纯文本（CSV 等）：主进程弹保存框并写盘 */
+  exportText: 'dialog:exportText'
 } as const
 
 /** 应用设置（userData/settings.json） */
@@ -277,3 +281,168 @@ export interface OcrRecognizeResponse {
   confidence?: number
   error?: string
 }
+
+// ---------- 货号批量处理（纯算法，零 API 成本） ----------
+
+/**
+ * 处理方式：
+ * - replace 只换前缀（如 JT -> TJ），其余不变
+ * - erase   整行擦掉，不留任何货号
+ * - custom  按映射表 / 固定文字写
+ */
+export type LabelMode = 'replace' | 'erase' | 'custom'
+
+/** 检测与擦除参数（对应原 Python 工具的 --band-top / --pad-x 等） */
+export interface LabelDetectOptions {
+  /** 搜索区上边界（图高比例，默认 0.86） */
+  bandTop?: number
+  /** 搜索区下边界（图高比例，默认 0.999） */
+  bandBottom?: number
+  /** 文字灰度阈值（默认 110） */
+  inkThreshold?: number
+  /** 擦除横向留白（默认 24） */
+  padX?: number
+  /** 擦除纵向留白（默认 14） */
+  padY?: number
+}
+
+export interface LabelOptions extends LabelDetectOptions {
+  /** 输入文件夹（必须已授权） */
+  inputDir: string
+  /** 输出文件夹；缺省 = 输入文件夹/_已处理 */
+  outputDir?: string
+  mode: LabelMode
+  oldPrefix?: string
+  newPrefix?: string
+  /** custom：固定文字（如 NO.TJ666-5） */
+  fixedText?: string
+  /** custom：映射表 {货号 或 文件名(不含扩展名): 新文字} */
+  mapping?: Record<string, string>
+  /** 递归子文件夹 */
+  recursive?: boolean
+  /** 同时把输出文件名/目录名里的旧前缀换掉（JT666-5.jpg -> TJ666-5.jpg） */
+  rename?: boolean
+  /** 生成前后对比图到 输出目录/_对比图 */
+  compare?: boolean
+  /** JPEG 重编码质量（默认 95） */
+  quality?: number
+  /** 找不到货号时不中断，继续处理其它图 */
+  tolerant?: boolean
+  /** 只检测不写文件（试跑） */
+  dryRun?: boolean
+  /**
+   * 字体族（CSS font-family 写法，可写多个用逗号分隔）。
+   * 留空 = 内置链 `Arial, "Arial Bold", "Liberation Sans", Helvetica, "DejaVu Sans", sans-serif`。
+   * 货号含中文时必须指定中文字体，否则会渲染成方块。
+   */
+  fontFamily?: string
+  /**
+   * 亚像素定位与栅格化（默认开）。关掉后退化为整数外框 + 整数缩放，
+   * 行为与原 Python 工具一致。
+   */
+  subpixel?: boolean
+}
+
+export type LabelFileStatus = 'ok' | 'warn' | 'not-found' | 'error' | 'dry'
+
+export interface LabelFileResult {
+  src: string
+  dst: string
+  name: string
+  status: LabelFileStatus
+  /** 写入图片的新文字（erase 模式为空） */
+  text?: string
+  /** 检测到的文字外框 [x0, y0, x1, y1]（右下角为闭区间） */
+  box?: [number, number, number, number]
+  note?: string
+  /** 输出文件名是否被改名 */
+  renamed?: boolean
+}
+
+/** 导出纯文本请求（CSV / 报告等） */
+export interface ExportTextRequest {
+  /** 建议文件名（含扩展名）；主进程会剥掉路径分隔符，只当文件名用 */
+  defaultName: string
+  /** 文件内容（UTF-8 写入） */
+  content: string
+}
+
+/** custom 模式映射表：由主进程读文件并解析，渲染进程不直接碰文件系统 */
+export interface MappingPickResult {
+  path: string
+  data?: Record<string, string>
+  error?: string
+}
+
+/** 批量进度推送（main -> renderer） */
+export interface LabelProgress {
+  done: number
+  total: number
+  current: LabelFileResult
+}
+
+export interface LabelRunResult {
+  ok: boolean
+  error?: string
+  outputDir: string
+  total: number
+  okCount: number
+  warnCount: number
+  notFoundCount: number
+  errorCount: number
+  renamedCount: number
+  items: LabelFileResult[]
+  reportPath?: string
+  dryRun: boolean
+  /** 是否被用户中止 */
+  aborted?: boolean
+}
+
+// ---------- 报价表：换图 + 改货号（.xlsx 专用） ----------
+
+export interface QuoteOptions {
+  xlsxPath: string
+  /** 新图片文件夹（文件名 = 新货号） */
+  imageDir: string
+  oldPrefix?: string
+  newPrefix?: string
+  /** 输出文件；缺省 = 原表_新.xlsx */
+  outputPath?: string
+  /** 直接覆盖原表（自动备份 .bak） */
+  inplace?: boolean
+  /** 图片递归子目录 */
+  recursive?: boolean
+  /** 图片重编码质量（默认 92） */
+  quality?: number
+}
+
+export interface QuotePlanItem {
+  code: string
+  newCode: string
+  /** 图片部件路径，如 xl/media/image1.jpeg */
+  media: string
+  /** 匹配到的新图文件路径（未找到时为空） */
+  newFile?: string
+}
+
+export interface QuotePlan {
+  pictures: QuotePlanItem[]
+  /** 货号列文字的替换对 */
+  codeStrings: { from: string; to: string }[]
+  warnings: string[]
+  picturesPlanned: number
+  codesPlanned: number
+}
+
+export interface QuoteRunResult {
+  ok: boolean
+  error?: string
+  outputPath?: string
+  /** 输出文件字节数 */
+  bytes?: number
+  plan?: QuotePlan
+  /** 写后校验发现的问题（空数组 = 全部通过） */
+  issues?: string[]
+  dryRun: boolean
+}
+

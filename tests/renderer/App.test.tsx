@@ -49,10 +49,6 @@ beforeEach(() => {
     testProvider: vi.fn(async () => ({ ok: true, message: 'ok' })),
     queryBalance: vi.fn(async () => ({ ok: false, message: "不支持" })),
     processImage,
-    ocrDetect: vi.fn(async () => ({ ok: true, text: 'NO.JT888-10', region: { x: 0.1, y: 0.2, width: 0.3, height: 0.1 } })),
-    ocrRecognize: vi.fn(async () => ({ ok: true, text: 'NO.JT888-10' })),
-    eraseTextAI: vi.fn(async () => ({ ok: true, outputPath: 'C:/out/toy_erased_ai.png', detectedText: 'NO.JT888-10' })),
-    eraseTextLocal: vi.fn(async () => ({ ok: true, outputPath: 'C:/out/toy_erased.png', detectedText: 'NO.JT888-10' })),
     pickImage: vi.fn(async () => null),
     pickImages,
     exportImage,
@@ -66,13 +62,25 @@ beforeEach(() => {
     getCacheInfo: vi.fn(async () => ({ fileCount: 0, sizeBytes: 0 })),
     cleanCache: vi.fn(async () => ({ removedCount: 0, freedBytes: 0 })),
     clearCache: vi.fn(async () => ({ removedCount: 0, freedBytes: 0 })),
+    // 批量改货号 / 报价表（本次新增）
+    pickFolder: vi.fn(async () => null),
+    pickXlsx: vi.fn(async () => null),
+    pickMapping: vi.fn(async () => null),
+    labelPreview: vi.fn(async () => ({ ok: true, outputDir: '', total: 0, okCount: 0, warnCount: 0, notFoundCount: 0, errorCount: 0, renamedCount: 0, items: [], dryRun: true })),
+    labelRun: vi.fn(async () => ({ ok: true, outputDir: '', total: 0, okCount: 0, warnCount: 0, notFoundCount: 0, errorCount: 0, renamedCount: 0, items: [], dryRun: false })),
+    labelCancel: vi.fn(async () => true),
+    onLabelProgress: vi.fn(() => () => {}),
+    quotePreview: vi.fn(async () => ({ ok: true, dryRun: true })),
+    quoteRun: vi.fn(async () => ({ ok: true, dryRun: false })),
+    openPath: vi.fn(async () => ({ ok: true })),
+    exportText: vi.fn(async () => null),
   }
 })
 
 describe('App 批量主流程', () => {
   it('初始状态：显示当前 API，生成按钮禁用', async () => {
     render(<App />)
-    expect(await screen.findByText(/白底：方舟测试/)).toBeTruthy()
+    expect(await screen.findByText(/白底图 API：方舟测试/)).toBeTruthy()
     const btn = screen.getByRole('button', { name: /批量生成/ }) as HTMLButtonElement
     expect(btn.disabled).toBe(true)
     expect(screen.getByText('处理结果将显示在这里')).toBeTruthy()
@@ -99,9 +107,9 @@ describe('App 批量主流程', () => {
     }
     vi.mocked(window.api.getProviders).mockResolvedValueOnce([volc, aliyun])
     render(<App />)
-    // 顶栏应显示「白底：阿里云百炼」而不是火山方舟
-    expect(await screen.findByText(/白底：阿里云百炼/)).toBeTruthy()
-    expect(screen.queryByText(/白底：火山方舟/)).toBeNull()
+    // 顶栏应显示「白底图 API：阿里云百炼」而不是火山方舟
+    expect(await screen.findByText(/白底图 API：阿里云百炼/)).toBeTruthy()
+    expect(screen.queryByText(/白底图 API：火山方舟/)).toBeNull()
   })
 
   it('点击上传区选择图片 → 列表出现缩略图 → 批量生成按钮可用', async () => {
@@ -338,7 +346,7 @@ describe('App 批量主流程', () => {
     getSettings.mockResolvedValueOnce({ theme: 'dark' } as const)
     render(<App />)
     // getSettings 异步加载后应用主题
-    await screen.findByText(/白底：方舟测试/)
+    await screen.findByText(/白底图 API：方舟测试/)
     expect(document.documentElement.dataset.theme).toBe('dark')
     // 顶栏主题下拉改为浅色 → 立即应用并调用 saveSettings 持久化
     const themeSelect = (await screen.findByLabelText('主题')) as HTMLSelectElement
@@ -348,77 +356,187 @@ describe('App 批量主流程', () => {
   })
 })
 
-describe('App 擦除货号', () => {
-  it('单张 AI 擦除（默认 AI 方式）：调用 eraseTextAI', async () => {
+describe('模式切换与新页签（批量改货号 / 报价表）', () => {
+  it('顶栏有三个模式按钮，默认是白底图', async () => {
     render(<App />)
-    fireEvent.click(await screen.findByText(/点击选择/))
-    await screen.findAllByRole('img')
-
-    fireEvent.click(await screen.findByText('🏷️ 擦除货号'))
-    fireEvent.click(await screen.findByText('✂️ 擦除货号'))
-
-    await waitFor(() => {
-      expect(window.api.eraseTextAI).toHaveBeenCalled()
-    })
-    const call = (window.api.eraseTextAI as ReturnType<typeof vi.fn>).mock.calls[0][0]
-    expect(call.inputPath).toContain('toy1.png')
+    expect(await screen.findByRole('button', { name: /✨ 白底图/ })).toBeTruthy()
+    expect(screen.getByRole('button', { name: /🔢 批量改货号/ })).toBeTruthy()
+    expect(screen.getByRole('button', { name: /📊 报价表/ })).toBeTruthy()
+    // 「擦除货号」模式已移除（改货号/擦除都走「批量改货号」）
+    expect(screen.queryByRole('button', { name: /🏷️ 擦除货号/ })).toBeNull()
   })
 
-  it('切到纯本地：单张擦除调用 eraseTextLocal（不依赖 API）', async () => {
+  it('切到「批量改货号」：显示配置面板，隐藏图片列表条', async () => {
     render(<App />)
-    fireEvent.click(await screen.findByText(/点击选择/))
-    await screen.findAllByRole('img')
-
-    fireEvent.click(await screen.findByText('🏷️ 擦除货号'))
-    fireEvent.click(await screen.findByText('💯 纯本地（免费）'))
-    fireEvent.click(await screen.findByText('✂️ 擦除货号'))
-
-    await waitFor(() => {
-      expect(window.api.eraseTextLocal).toHaveBeenCalled()
-    })
-    // AI 擦除不应被调用
-    expect(window.api.eraseTextAI).not.toHaveBeenCalled()
+    fireEvent.click(await screen.findByRole('button', { name: /🔢 批量改货号/ }))
+    expect(await screen.findByText('批量改货号 · 配置')).toBeTruthy()
+    expect(screen.getByText(/纯算法 · 不联网 · 不消耗额度/)).toBeTruthy()
+    expect(screen.getByRole('button', { name: /① 先试跑/ })).toBeTruthy()
+    expect(screen.getByRole('button', { name: /② 开始处理/ })).toBeTruthy()
+    // 文件夹级流水线不需要图片列表条
+    expect(screen.queryByText(/还没有图片/)).toBeNull()
   })
 
-  it('批量擦除（本地方式）：每张图调 eraseTextLocal', async () => {
+  it('切到「报价表」：显示报价表面板与试跑按钮', async () => {
     render(<App />)
-    fireEvent.click(await screen.findByText(/点击选择/))
-    await screen.findAllByRole('img')
-
-    fireEvent.click(await screen.findByText('🏷️ 擦除货号'))
-    fireEvent.click(await screen.findByText('💯 纯本地（免费）'))
-    fireEvent.click(await screen.findByRole('button', { name: /🗑️ 批量擦除/ }))
-
-    await waitFor(() => {
-      expect(window.api.eraseTextLocal).toHaveBeenCalled()
-    })
+    fireEvent.click(await screen.findByRole('button', { name: /📊 报价表/ }))
+    expect(await screen.findByText('报价表换图改货号')).toBeTruthy()
+    expect(screen.getByText(/只改三处 · 格式零改动/)).toBeTruthy()
+    expect(screen.getByText(/老式 \.xls 请先在 Excel\/WPS 里/)).toBeTruthy()
   })
 
-  it('区域复用：某张 OCR 定位失败时复用同批成功图的区域（位置一致场景）', async () => {
-    const ocrDetect = window.api.ocrDetect as ReturnType<typeof vi.fn>
-    const eraseLocal = window.api.eraseTextLocal as ReturnType<typeof vi.fn>
-    ocrDetect
-      .mockResolvedValueOnce({ ok: false, error: '未识别到货号' })
-      .mockResolvedValueOnce({ ok: true, text: 'NO.JT888-10', region: { x: 0.2, y: 0.3, width: 0.4, height: 0.15 } })
-
+  it('批量改货号：未选文件夹时「先试跑」按钮禁用', async () => {
     render(<App />)
-    ;(window.api.pickImages as ReturnType<typeof vi.fn>).mockResolvedValueOnce([
-      'C:/in/toy1.png',
-      'C:/in/toy2.png'
-    ])
-    fireEvent.click(await screen.findByText(/点击选择/))
-    await screen.findAllByRole('img')
+    fireEvent.click(await screen.findByRole('button', { name: /🔢 批量改货号/ }))
+    const dry = (await screen.findByRole('button', { name: /① 先试跑/ })) as HTMLButtonElement
+    expect(dry.disabled).toBe(true)
+    const run = screen.getByRole('button', { name: /② 开始处理/ }) as HTMLButtonElement
+    expect(run.disabled).toBe(true)
+  })
 
-    fireEvent.click(await screen.findByText('🏷️ 擦除货号'))
-    fireEvent.click(await screen.findByText('💯 纯本地（免费）'))
-    fireEvent.click(await screen.findByRole('button', { name: /🗑️ 批量擦除/ }))
-
-    await waitFor(() => {
-      expect(eraseLocal).toHaveBeenCalledTimes(2)
+  it('批量改货号：选好文件夹后试跑会调用 labelPreview 并渲染逐张结果', async () => {
+    vi.mocked(window.api.pickFolder).mockResolvedValueOnce('C:/shop/imgs')
+    vi.mocked(window.api.labelPreview).mockResolvedValueOnce({
+      ok: true,
+      outputDir: 'C:/shop/imgs/_已处理',
+      total: 2,
+      okCount: 1,
+      warnCount: 0,
+      notFoundCount: 1,
+      errorCount: 0,
+      renamedCount: 1,
+      dryRun: true,
+      items: [
+        { src: 'C:/shop/imgs/JT666-5.jpg', dst: 'C:/shop/imgs/_已处理/TJ666-5.jpg', name: 'JT666-5.jpg', status: 'dry', text: 'NO.TJ666-5', box: [10, 700, 210, 736], renamed: true },
+        { src: 'C:/shop/imgs/JT777-6.jpg', dst: 'C:/shop/imgs/_已处理/TJ777-6.jpg', name: 'JT777-6.jpg', status: 'not-found', renamed: true }
+      ]
     })
-    const calls = eraseLocal.mock.calls.map((c) => c[0])
-    const failedCall = calls.find((c) => c.inputPath.includes('toy1'))
-    expect(failedCall.region).toEqual({ x: 0.2, y: 0.3, width: 0.4, height: 0.15 })
-    expect(window.api.ocrRecognize).toHaveBeenCalled()
+    render(<App />)
+    fireEvent.click(await screen.findByRole('button', { name: /🔢 批量改货号/ }))
+    // 输入/输出两个「选择…」按钮，点第一个（输入文件夹）
+    fireEvent.click(screen.getAllByRole('button', { name: /选择…/ })[0])
+    await waitFor(() => expect(window.api.pickFolder).toHaveBeenCalled())
+    const dry = (await screen.findByRole('button', { name: /① 先试跑/ })) as HTMLButtonElement
+    await waitFor(() => expect(dry.disabled).toBe(false))
+    fireEvent.click(dry)
+    await waitFor(() => expect(window.api.labelPreview).toHaveBeenCalledTimes(1))
+    expect(await screen.findByText('共 2 张')).toBeTruthy()
+    expect(screen.getByText('成功 1')).toBeTruthy()
+    expect(screen.getByText(/没找到货号 1/)).toBeTruthy()
+    // 结果行与选中项详情里都会出现新货号
+    expect(screen.getAllByText('NO.TJ666-5').length).toBeGreaterThan(0)
+  })
+
+  it('报价表：未选表时两个按钮都禁用', async () => {
+    render(<App />)
+    fireEvent.click(await screen.findByRole('button', { name: /📊 报价表/ }))
+    const dry = (await screen.findByRole('button', { name: /① 先试跑/ })) as HTMLButtonElement
+    const run = screen.getByRole('button', { name: /② 开始处理/ }) as HTMLButtonElement
+    expect(dry.disabled).toBe(true)
+    expect(run.disabled).toBe(true)
+  })
+})
+describe('模式提示与批量结果筛选', () => {
+
+  /** 造一批混合状态的结果：1 成功 / 1 警告 / 1 没找到 / 1 出错 */
+  const mixedResult = {
+    ok: true,
+    outputDir: 'C:/shop/imgs/_已处理',
+    total: 4,
+    okCount: 1,
+    warnCount: 1,
+    notFoundCount: 1,
+    errorCount: 1,
+    renamedCount: 0,
+    dryRun: true,
+    items: [
+      { src: 'C:/shop/imgs/A.jpg', dst: 'C:/shop/imgs/_已处理/A.jpg', name: 'A.jpg', status: 'dry', text: 'NO.PI1-1' },
+      { src: 'C:/shop/imgs/B.jpg', dst: 'C:/shop/imgs/_已处理/B.jpg', name: 'B.jpg', status: 'warn', text: 'NO.PI2-2', note: '位置偏差 dx=20' },
+      { src: 'C:/shop/imgs/C.jpg', dst: 'C:/shop/imgs/_已处理/C.jpg', name: 'C.jpg', status: 'not-found' },
+      { src: 'C:/shop/imgs/D.jpg', dst: 'C:/shop/imgs/_已处理/D.jpg', name: 'D.jpg', status: 'error', note: '无法读取图片尺寸' }
+    ]
+  } as never
+
+  /** 结果行的文件名节点（用 class 查，因为结果行是 div 而非可点角色） */
+  const rowNames = (c: HTMLElement): string[] =>
+    Array.from(c.querySelectorAll('.result-name')).map((n) => n.textContent ?? '')
+
+  async function runPreview(): Promise<HTMLElement> {
+    vi.mocked(window.api.pickFolder).mockResolvedValueOnce('C:/shop/imgs')
+    vi.mocked(window.api.labelPreview).mockResolvedValueOnce(mixedResult)
+    const view = render(<App />)
+    fireEvent.click(await screen.findByRole('button', { name: /🔢 批量改货号/ }))
+    fireEvent.click(screen.getAllByRole('button', { name: /选择…/ })[0])
+    const dry = (await screen.findByRole('button', { name: /① 先试跑/ })) as HTMLButtonElement
+    await waitFor(() => expect(dry.disabled).toBe(false))
+    fireEvent.click(dry)
+    await waitFor(() => expect(window.api.labelPreview).toHaveBeenCalled())
+    await screen.findByText('共 4 张')
+    return view.container
+  }
+
+  it('默认显示全部，筛选条带各类计数', async () => {
+    const c = await runPreview()
+    expect(rowNames(c)).toEqual(['A.jpg', 'B.jpg', 'C.jpg', 'D.jpg'])
+    // 筛选按钮上的计数
+    expect(screen.getByRole('button', { name: /只看有问题的\s*3/ })).toBeTruthy()
+    expect(screen.getByRole('button', { name: /^成功\s*1$/ })).toBeTruthy()
+  })
+
+  it('点「只看有问题的」只剩警告/没找到/出错三类', async () => {
+    const c = await runPreview()
+    fireEvent.click(screen.getByRole('button', { name: /只看有问题的/ }))
+    await waitFor(() => expect(rowNames(c)).toEqual(['B.jpg', 'C.jpg', 'D.jpg']))
+  })
+
+  it('点「成功」只剩成功项（试跑的 dry 也算成功）', async () => {
+    const c = await runPreview()
+    // 关键回归：试跑时条目状态是 dry，必须和汇总里的「成功 1」对得上
+    fireEvent.click(screen.getByRole('button', { name: /^成功\s*1$/ }))
+    await waitFor(() => expect(rowNames(c)).toEqual(['A.jpg']))
+  })
+
+  it('出错的行显示「出错」或具体原因，不会误显示成「擦除」', async () => {
+    const c = await runPreview()
+    const rows = Array.from(c.querySelectorAll('.result-row'))
+    const errRow = rows.find((r) => r.querySelector('.result-name')?.textContent === 'D.jpg')!
+    expect(errRow.querySelector('.result-text')?.textContent).toBe('无法读取图片尺寸')
+    // 没找到也应该是准确说法
+    const nfRow = rows.find((r) => r.querySelector('.result-name')?.textContent === 'C.jpg')!
+    expect(nfRow.querySelector('.result-text')?.textContent).toBe('未检测到')
+  })
+
+  it('有问题时导出按钮可用，点击会带着问题项调用 exportText', async () => {
+    await runPreview()
+    const btn = screen.getByRole('button', { name: /导出问题清单（3）/ }) as HTMLButtonElement
+    expect(btn.disabled).toBe(false)
+    fireEvent.click(btn)
+    await waitFor(() => expect(window.api.exportText).toHaveBeenCalledTimes(1))
+    const arg = vi.mocked(window.api.exportText).mock.calls[0][0] as { defaultName: string; content: string }
+    expect(arg.defaultName).toMatch(/^问题清单_\d{4}-\d{2}-\d{2}_3张\.csv$/)
+    // CSV 里只有问题项，且状态是中文标签
+    expect(arg.content).toContain('B.jpg')
+    expect(arg.content).toContain('D.jpg')
+    expect(arg.content).not.toContain('A.jpg')
+    expect(arg.content).toContain('有警告')
+    expect(arg.content.startsWith('\ufeff')).toBe(true)
+  })
+
+  it('全部成功时导出按钮禁用', async () => {
+    vi.mocked(window.api.pickFolder).mockResolvedValueOnce('C:/shop/imgs')
+    vi.mocked(window.api.labelPreview).mockResolvedValueOnce({
+      ok: true, outputDir: 'C:/o', total: 1, okCount: 1, warnCount: 0, notFoundCount: 0,
+      errorCount: 0, renamedCount: 0, dryRun: true,
+      items: [{ src: 'C:/a/A.jpg', dst: 'C:/a/A.jpg', name: 'A.jpg', status: 'dry', text: 'NO.PI1-1' }]
+    } as never)
+    render(<App />)
+    fireEvent.click(await screen.findByRole('button', { name: /🔢 批量改货号/ }))
+    fireEvent.click(screen.getAllByRole('button', { name: /选择…/ })[0])
+    const dry = (await screen.findByRole('button', { name: /① 先试跑/ })) as HTMLButtonElement
+    await waitFor(() => expect(dry.disabled).toBe(false))
+    fireEvent.click(dry)
+    await screen.findByText('共 1 张')
+    const btn = screen.getByRole('button', { name: /导出问题清单（0）/ }) as HTMLButtonElement
+    expect(btn.disabled).toBe(true)
   })
 })

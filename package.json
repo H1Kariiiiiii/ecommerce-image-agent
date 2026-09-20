@@ -1,6 +1,6 @@
 {
   "name": "ecommerce-image-agent",
-  "version": "0.8.0",
+  "version": "0.9.0",
   "description": "玩具电商白底图 Agent：上传玩具产品图，自动抠图生成白底图 / 改货号",
   "main": "./out/main/index.js",
   "author": "ecommerce-image-agent",
@@ -10,6 +10,8 @@
     "build": "electron-vite build",
     "start": "electron-vite preview",
     "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json && tsc --noEmit -p tsconfig.tests.json",
+    "gen:help": "node scripts/gen-help.mjs",
+    "ui:shot": "npm run build && electron scripts/ui-shot.cjs",
     "test": "vitest run",
     "test:watch": "vitest",
     "dist": "npm run build && electron-builder --win",
@@ -19,7 +21,6 @@
     "@electron-toolkit/preload": "^3.0.1",
     "@electron-toolkit/utils": "^3.0.0",
     "marked": "^18.0.9",
-    "onnxruntime-node": "^1.27.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "sharp": "^0.35.3"
