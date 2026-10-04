@@ -1,0 +1,43 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    # 项目本身面向 Windows（electron-builder 出 NSIS 安装包、字体回退按 win32 分支走），
+    # 选 windows-latest 还能顺带让 sharp 直接拿到官方预编译二进制，不用在 Linux 上现编译。
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      # 仓库里的 Python 原版工具（label_tool.py / quote_tool.py）是几组对照测试的裁判。
+      # 不装 pillow + numpy 的话，tests/labelParity.test.ts 会**静默跳过**——
+      # 测试全绿但最关键的那条断言根本没跑。装上是为了让 CI 骗不了人。
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: 安装 Python 对照测试依赖（pillow / numpy）
+        run: pip install pillow numpy
+
+      - name: 安装依赖
+        run: npm ci
+
+      - name: 类型检查（node / web / tests 三项目）
+        run: npm run typecheck
+
+      - name: 单元测试
+        run: npm test
+
+      - name: 构建产物
+        run: npm run build

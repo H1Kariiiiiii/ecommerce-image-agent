@@ -28,10 +28,22 @@ export function CompareView({ inputPath, outputPath }: Props): JSX.Element {
     setPos(clampPct(((clientX - rect.left) / rect.width) * 100))
   }
 
-  /** 分隔线/手柄：按住即可拖动（pointer capture，拖动期间事件持续送达） */
+  /**
+   * 分隔线/手柄：按住即可拖动（pointer capture，拖动期间事件持续送达）。
+   *
+   * 注意两处顺序/防御，都是踩过的坑：
+   * 1. setPointerCapture 不是所有环境都有（jsdom 里就没有），而且*可能抛异常*。
+   *    早先它没被包住并且排在 updateFromClientX 之前 —— 一抛异常，手柄按下时
+   *    「跳到点击位置」这一步就被整个跳过了，表现为点手柄没反应（只能先拖一下）。
+   * 2. 所以：捕获失败不能影响后续逻辑，位置更新永远要执行。
+   */
   const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>): void => {
     draggingRef.current = true
-    e.currentTarget.setPointerCapture(e.pointerId)
+    try {
+      e.currentTarget.setPointerCapture?.(e.pointerId)
+    } catch {
+      /* 不支持/被拒绝时不致命：拖动期间 pointermove 仍会派发到该元素 */
+    }
     updateFromClientX(e.clientX)
   }
   const handlePointerMove = (e: React.PointerEvent<HTMLDivElement>): void => {

@@ -43,9 +43,13 @@ describe('CompareView', () => {
       toJSON: () => ({})
     } as DOMRect)
 
-    // pointerdown 在 x=200（=50%）→ 分割线在 50%
+    // 按下手柄本身就要跳到点击位置（jsdom 无 setPointerCapture，此处曾抛异常
+    // 导致「按下」这一步被跳过；这条断言专门钉住它）
+    fireEvent.pointerDown(divider, { clientX: 40, pointerId: 1 })
+    expect(document.querySelector('.slider-overlay')?.getAttribute('style')).toContain('inset(0 90% 0 0)')
+
+    // 再按一次到 x=200（=50%），然后拖动到 x=280（=70%）
     fireEvent.pointerDown(divider, { clientX: 200, pointerId: 1 })
-    // 拖动到 x=280（=70%）
     fireEvent.pointerMove(divider, { clientX: 280, pointerId: 1 })
     const overlay = document.querySelector('.slider-overlay')
     expect(overlay?.getAttribute('style')).toContain('inset(0 30% 0 0)')

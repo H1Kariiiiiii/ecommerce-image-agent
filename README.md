@@ -7,13 +7,25 @@
 ![Electron](https://img.shields.io/badge/Electron-33-47848F)
 ![React](https://img.shields.io/badge/React-18-61DAFB)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178C6)
-![tests](https://img.shields.io/badge/tests-323%20passed-2f9e63)
-
-<!-- 建议放 3 张截图：主界面（浅色）/ 批量处理 / 深色模式 + API 设置
-![主界面](docs/screenshot-main-light.png)
-![批量处理](docs/screenshot-batch.png)
-![深色模式](docs/screenshot-dark.png)
+![tests](https://img.shields.io/badge/tests-289%20passed-2f9e63)
+<!-- 推到 GitHub 后，把上面这行静态徽章换成实时 CI 徽章（把 <user>/<repo> 换成实际路径）：
+![CI](https://github.com/<user>/<repo>/actions/workflows/ci.yml/badge.svg)
 -->
+
+主界面（浅色 / 深色）—— 上传玩具产品图，右侧实时看到抠白底前后的对比：
+
+| 浅色 | 深色 |
+| --- | --- |
+| ![主界面（浅色）](docs/screenshot-main-light.png) | ![主界面（深色）](docs/screenshot-dark.png) |
+
+两条免费流水线：
+
+| 批量改货号（整目录） | 报价表换图改货号（.xlsx） |
+| --- | --- |
+| ![批量改货号](docs/screenshot-label-batch.png) | ![报价表](docs/screenshot-quote.png) |
+
+<sub>以上截图由 `npm run ui:shot` 从**真实构建产物**生成（`scripts/ui-shot.cjs`），不是拼图；
+演示用的产品图也是脚本现场合成的，仓库里不放二进制素材。</sub>
 
 ## 功能亮点
 
@@ -52,7 +64,7 @@
 - **Electron + electron-vite + React 18 + TypeScript**
 - 主进程分层：API 适配层（OpenAI 兼容客户端，含 generations / edits / chat 三种风格）、IPC、配置持久化、额度与缓存管理
 - 自定义 `asset://` 协议安全预览本地图片；路径授权集模型（对话框 / 拖拽登记授权）
-- **vitest 单元测试 286 个**，覆盖 API 客户端（三种请求风格 / 余额）、IPC、设置 / 缓存持久化、React 组件、纯算法抠白底、货号几何定位与批量流水线、零依赖 zip 读写与 xlsx 改写
+- **vitest 单元测试 289 个**，覆盖 API 客户端（三种请求风格 / 余额）、IPC、设置 / 缓存持久化、React 组件、纯算法抠白底、货号几何定位与批量流水线、零依赖 zip 读写与 xlsx 改写
 - 货号批处理与报价表改写均为**纯 TypeScript 实现**（图像用 `sharp`，xlsx 用内置 `node:zlib` 手写的 zip 层），不需要 Python 或 Office；仓库里的 Python 原版仅作为对照测试的裁判（缺失时自动跳过）
 
 ## 快速开始
@@ -128,24 +140,27 @@ src/
 │       ├── openaiCompat.ts# OpenAI 兼容客户端（generations / edits / chat / 余额查询）
 │       ├── dashscope.ts   # 阿里云百炼 DashScope 原生客户端（qwen-image 系列）
 │       ├── whiteBgLocal.ts# 纯算法抠白底（多色背景建模 + 泛洪填充 + 边缘去污染）
-│   ├── fontSetup.ts       # 启动时注册打包字体（fontconfig，Liberation Sans 兜底 Arial）
+│       ├── canvasExtend.ts# 无损画布扩展（原图不变，四周补边 / 等比适配）
 │       ├── labelDetect.ts # 货号几何定位（底部投影 + 亚像素细化，纯函数，零依赖）
 │       ├── labelOps.ts    # 单张货号擦除 + Arial Bold 亚像素重绘 + 写后自检
 │       ├── labelBatch.ts  # 整目录批量调度（改名 / 对比图 / CSV 报告 / 进度）
 │       ├── zip.ts         # 零依赖 zip 读写（未改动部件按原始字节复制）
 │       ├── xlsxPatch.ts   # 报价表换图改货号 + 写后校验
-│       ├── mask.ts        # inpainting mask 生成
-│       ├── textOverlay.ts # 文字叠加
 │       ├── util.ts        # base64、点分路径、模板、安全下载（魔数校验）等
 │       └── index.ts       # provider 工厂
+│   └── fontSetup.ts       # 启动时注册打包字体（fontconfig，Liberation Sans 兜底 Arial）
 ├── preload/index.ts       # contextBridge 白名单 API
-└── renderer/src/          # React UI（批量列表、上传、对比、导出、设置面板）
+└── renderer/src/          # React UI（批量列表、上传、对比、导出、设置面板、货号批处理、报价表）
 ```
+
+> `scripts/ui-shot.cjs` 会加载**真实构建产物**逐个页签截图（`npm run ui:shot`）——
+> 两轮 UI 缺陷（样式块丢失、复选框被拉成大方框）都是「测试过了但没人看界面」造成的，
+> 现在它是交付前的一道固定自检。README 里的截图也从这里来。
 
 ## 测试
 
 ```bash
-npm test          # vitest run，323 个用例
+npm test          # vitest run，289 个用例
 npm run typecheck # tsc --noEmit × 3（node / web / tests）
 npm run gen:help  # 说明书更新后重新生成应用内帮助
 ```
