@@ -7,10 +7,8 @@
 ![Electron](https://img.shields.io/badge/Electron-33-47848F)
 ![React](https://img.shields.io/badge/React-18-61DAFB)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178C6)
+![CI](https://github.com/H1Kariiiiiii/ecommerce-image-agent/actions/workflows/ci.yml/badge.svg)
 ![tests](https://img.shields.io/badge/tests-289%20passed-2f9e63)
-<!-- 推到 GitHub 后，把上面这行静态徽章换成实时 CI 徽章（把 <user>/<repo> 换成实际路径）：
-![CI](https://github.com/<user>/<repo>/actions/workflows/ci.yml/badge.svg)
--->
 
 主界面（浅色 / 深色）—— 上传玩具产品图，右侧实时看到抠白底前后的对比：
 
