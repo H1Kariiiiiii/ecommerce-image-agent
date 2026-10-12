@@ -1,6 +1,6 @@
 {
   "name": "ecommerce-image-agent",
-  "version": "0.9.0",
+  "version": "0.9.1",
   "description": "玩具电商白底图 Agent：上传玩具产品图，自动抠图生成白底图 / 改货号",
   "main": "./out/main/index.js",
   "author": "ecommerce-image-agent",
