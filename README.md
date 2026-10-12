@@ -65,7 +65,20 @@
 - **vitest 单元测试 289 个**，覆盖 API 客户端（三种请求风格 / 余额）、IPC、设置 / 缓存持久化、React 组件、纯算法抠白底、货号几何定位与批量流水线、零依赖 zip 读写与 xlsx 改写
 - 货号批处理与报价表改写均为**纯 TypeScript 实现**（图像用 `sharp`，xlsx 用内置 `node:zlib` 手写的 zip 层），不需要 Python 或 Office；仓库里的 Python 原版仅作为对照测试的裁判（缺失时自动跳过）
 
-## 快速开始
+## 下载安装（普通用户）
+
+不想编译？直接下载打包好的安装包（**Windows 64 位**）：
+
+👉 **[最新版本 Releases](https://github.com/H1Kariiiiiii/ecommerce-image-agent/releases/latest)**
+
+| 文件 | 说明 |
+| --- | --- |
+| `ToyWhiteBG-Agent-<版本>-Setup.exe` | 安装版（~93 MB）：双击 → 一路「下一步」→ 完成 |
+| `ToyWhiteBG-Agent-<版本>-portable.exe` | 便携版（~92 MB）：免安装，U 盘随身带，双击即用 |
+
+> 首次运行若 Windows SmartScreen 提示「已保护你的电脑」，点「更多信息」→「仍要运行」即可（个人项目未做代码签名）。
+
+## 快速开始（开发者）
 
 ```bash
 npm install
