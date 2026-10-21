@@ -267,7 +267,10 @@ describe('批量改货号 IPC（label:preview / label:run / label:cancel）', ()
     })
     expect(res.ok).toBe(false)
     expect(res.error).toContain('未授权的输出文件夹')
-  })
+    // makeJob() 会先用 sharp 生成测试图，CI 冷启动时偶发超过 vitest 默认 5s
+    // （2026-10-12 的 CI #3 就因 "Test timed out in 5000ms" 挂过）。断言本身是纯内存判断，
+    // 给个大超时只是防止「环境慢」被误报成「逻辑错」。
+  }, 120000)
 
   it('试跑：返回逐张检测结果，且不写任何文件', async () => {
     const { inputDir } = await makeJob()
